@@ -112,21 +112,21 @@
         .smoke {
             position: absolute;
             bottom: 10px;
-            right: -20px;
-            width: 30px;
-            height: 30px;
+            right: -30px;
+            width: 20px;
+            height: 20px;
             background: rgba(200, 200, 200, 0.8);
             border-radius: 50%;
             opacity: 0;
-            animation: puff 1s infinite;
+            animation: puff 2s infinite;
         }
         
         .is-moving .smoke {
-            opacity: 1;
+            opacity: 2;
         }
 
         @keyframes puff {
-            0% { transform: scale(0.5) translate(0, 0); opacity: 0.8; }
+            0% { transform: scale(0.7) translate(0, 0); opacity: 0.8; }
             100% { transform: scale(2) translate (-20px, 10px); opacity: 0; }
         }
 
@@ -199,7 +199,7 @@
 
         <div id="screen-grade" class="screen active flex-col items-center justify-center p-4 md:p-8">
             <div class="text-5xl md:text-7xl mb-2 flex-none">👦🏼</div>
-            <h2 class="text-3xl md:text-6xl text-yellow-400 mb-2 font-bold drop-shadow-lg flex-none text-center">Choose Your Grade!</h2>
+            <h2 class="text-3xl md:text-6xl text-yellow-400 mb-2 font-bold drop-shadow-lg flex-none text-center">Choose Your Class!</h2>
             
             <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 w-full max-w-5xl flex-1 min-h-0 pb-4">
             </div>
@@ -307,6 +307,7 @@
                                     <tr>
                                         <th class="p-3 md:p-4">Date</th>
                                         <th class="p-3 md:p-4">Student</th>
+                                        <th class="p-3 md:p-4">Class</th>
                                         <th class="p-3 md:p-4">Topic</th>
                                         <th class="p-3 md:p-4">Score</th>
                                     </tr>
@@ -323,7 +324,7 @@
 
     </main>
 
-    <script>
+<script>
         const DATA = {
             students: {
                 1: [{id: '01', name: 'Hank'}, {id: '02', name: 'Jim'}, {id: '03', name: 'Vince'}, {id: '04', name: 'Anders'}, {id: '05', name: 'Joe'}, {id: '06', name: 'Leo'}, {id: '07', name: 'Poli'}, {id: '08', name: 'Ella'}, {id: '09', name: 'Lucy'}, {id: '10', name: 'Annie'}, {id: '11', name: 'Nina'}, {id: '12', name: 'Linda'}, {id: '13', name: 'Elsa'}, {id: '00', name: 'Sample'}],
@@ -348,7 +349,6 @@
                 6: [{ id: 't6', title: 'WW8-U4', l1: ['library', 'coffee shop', 'museum', 'sports center', 'night market', 'movie theater'], l2: ['Where were you two days ago?', 'Were you at the museum yesterday?', 'Was she at the sports center an hour ago?', 'Where was he last night?', 'She was at the night market.', 'Yes, I was.', 'Yes, he was.', 'Yes, they were.', 'No, she wasn’t.', 'No, we weren’t.'] }]
              }
         };
-
         class AudioEngine {
             constructor() {
                 this.ctx = null;
@@ -387,7 +387,8 @@
                 this.state = { 
                     grade: null, themeClass: 'btn-blue', student: null, topic: null, 
                     level: 1, currentPool: [], currentItem: '', progress: 0, 
-                    totalScore: 0, l1Score: 0, l2Score: 0, isListening: false 
+                    totalScore: 0, l1Score: 0, l2Score: 0, isListening: false,
+                    retryCount: 0
                 };
                 this.audio = new AudioEngine();
                 this.initSpeechRecognition();
@@ -408,7 +409,6 @@
                     this.recognition.continuous = false; 
                     this.recognition.interimResults = true; 
                     this.recognition.onstart = () => { this.state.isListening = true; this.updateMicUI(); this.audio.playMicStart(); };
-                    // Only process final results
                     this.recognition.onresult = (event) => { 
                         const result = event.results[event.results.length - 1];
                         if (result.isFinal) {
@@ -434,7 +434,7 @@
             updateHeader() {
                 const ui = document.getElementById('userInfo');
                 if (this.state.student) {
-                    ui.innerHTML = `G${this.state.grade} - ${this.state.student.name}`;
+                    ui.innerHTML = `Class ${this.state.grade}A - ${this.state.student.name}`;
                     ui.className = `font-bold text-white px-4 py-2 rounded-xl text-sm border-2 ${this.state.themeClass} shadow-inner`;
                     ui.classList.remove('hidden');
                 } else { ui.classList.add('hidden'); }
@@ -447,7 +447,7 @@
                 [1,2,3,4,5,6].forEach((g) => {
                     const btn = document.createElement('button');
                     btn.className = `btn-game ${btnColors[g]} text-3xl md:text-5xl h-full w-full py-4 rounded-3xl`;
-                    btn.innerHTML = `Grade ${g}`;
+                    btn.innerHTML = `${g}A`;
                     btn.onclick = () => { this.requestMicPermission(); this.state.grade = g; this.state.themeClass = btnColors[g]; this.audio.initContext(); this.navigate('student'); };
                     container.appendChild(btn);
                 });
@@ -483,6 +483,7 @@
                 this.state.level = level;
                 this.state.progress = 0;
                 this.state.totalScore = 0;
+                this.state.retryCount = 0;
                 const rawPool = this.state.level === 1 ? this.state.topic.l1 : this.state.topic.l2;
                 this.state.currentPool = this.shuffleArray([...rawPool]);
                 this.navigate('game');
@@ -496,6 +497,7 @@
             nextWord() {
                 if (this.state.progress >= 5) { this.endLevel(); return; }
                 this.state.currentItem = this.state.currentPool.shift();
+                this.state.retryCount = 0; // Reset penalty on new word
                 document.getElementById('target-text').innerText = this.state.currentItem;
                 document.getElementById('recognition-status').innerText = "Tap mic to speak";
             }
@@ -509,11 +511,18 @@
                 this.state.isListening ? btn.classList.add('mic-pulse') : btn.classList.remove('mic-pulse');
             }
 
+            calculateScoreWithPenalty(ratio) {
+                const baseMax = 20;
+                const penalty = this.state.retryCount * 2;
+                const currentMax = Math.max(0, baseMax - penalty);
+                return Math.round(ratio * currentMax);
+            }
+
             handleSpeechResult(transcript) {
                 const ratio = this.calculateAccuracy(transcript, this.state.currentItem);
-                const points = Math.round(ratio * 20); // Scale to 20 pts max
                 
-                if (ratio >= 0.5) { // 50% Threshold to count as progress and move
+                if (ratio >= 0.5) { 
+                    const points = this.calculateScoreWithPenalty(ratio);
                     this.state.totalScore += points;
                     this.state.progress++;
                     this.updateCarPosition();
@@ -522,6 +531,7 @@
                     document.getElementById('track').classList.add('is-moving');
                     setTimeout(() => { document.getElementById('track').classList.remove('is-moving'); this.nextWord(); }, 1500);
                 } else {
+                    this.state.retryCount++;
                     document.getElementById('recognition-status').innerText = "Try again!";
                     this.audio.playTryAgain();
                 }
@@ -556,7 +566,6 @@
                     this.state.l2Score = finalScore;
                 }
                 
-                // Show "Try Again" message for low scores based on average
                 const title = document.getElementById('result-title');
                 const desc = document.getElementById('result-desc');
                 
@@ -599,12 +608,17 @@
             }
 
             saveDataAndSend(score) {
-                const data = { timestamp: new Date().toLocaleString(), grade: "Grade " + this.state.grade, studentName: this.state.student.name, topic: this.state.topic.title, totalScore: score };
+                const data = { 
+                    timestamp: new Date().toLocaleString(), 
+                    grade: "Class " + this.state.grade + "A", 
+                    studentName: this.state.student.name, 
+                    topic: this.state.topic.title, 
+                    totalScore: score 
+                };
                 let history = JSON.parse(localStorage.getItem('sr_history') || '[]');
                 history.unshift(data);
                 localStorage.setItem('sr_history', JSON.stringify(history));
-                fetch("https://script.google.com/macros/s/AKfycbwkUuNC1F77CAewovt9GxsGjGIIIG1ixBYkLAUWghvwho3ft2JEKrPA7lcLktkqg3d7JA/exec", {
-                    method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+fetch("https://script.google.com/macros/s/AKfycbwkUuNC1F77CAewovt9GxsGjGIIIG1ixBYkLAUWghvwho3ft2JEKrPA7lcLktkqg3d7JA/exec", {                    method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
                 }).catch(console.error);
                 this.renderDashboardTable();
             }
@@ -630,7 +644,7 @@
                     history.forEach(r => {
                         const tr = document.createElement('tr');
                         tr.className = "border-b border-gray-700";
-                        tr.innerHTML = `<td class="p-3">${r.timestamp}</td><td class="p-3">${r.studentName}</td><td class="p-3">${r.topic}</td><td class="p-3 font-bold text-green-400">${r.totalScore}</td>`;
+                        tr.innerHTML = `<td class="p-3">${r.timestamp}</td><td class="p-3">${r.studentName}</td><td class="p-3">${r.grade}</td><td class="p-3">${r.topic}</td><td class="p-3 font-bold text-green-400">${r.totalScore}</td>`;
                         body.appendChild(tr);
                     });
                 }
